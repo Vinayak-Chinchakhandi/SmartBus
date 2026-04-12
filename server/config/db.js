@@ -2,8 +2,8 @@ const sqlite3 = require('sqlite3').verbose();
 const fs = require('fs');
 const path = require('path');
 
-// ✅ Correct DB path (database folder)
-const dbPath = path.join(__dirname, '../../database/smartbus.db');
+// ✅ Correct DB path (server folder - for Railway deployment)
+const dbPath = path.join(__dirname, '../smartbus.db');
 
 // Create database connection
 const db = new sqlite3.Database(dbPath, (err) => {
