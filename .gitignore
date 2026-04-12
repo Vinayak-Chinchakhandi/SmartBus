@@ -1,0 +1,60 @@
+# ======================
+# Node modules
+# ======================
+node_modules/
+**/node_modules/
+
+# ======================
+# Logs
+# ======================
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ======================
+# Environment files
+# ======================
+.env
+.env.*
+**/.env
+**/.env.*
+
+# ======================
+# Build files
+# ======================
+dist/
+build/
+.client/
+.server/
+
+# ======================
+# SQLite database
+# ======================
+
+# ❌ Ignore all DB files (disabled)
+# *.db
+# *.sqlite
+
+# ✅ Allow DB inside database folder
+!database/
+!database/*.db
+
+# ======================
+# OS files
+# ======================
+.DS_Store
+Thumbs.db
+
+# ======================
+# VS Code
+# ======================
+.vscode/
+
+# ======================
+# Misc
+# ======================
+coverage/
+.cache/
+.tmp/
