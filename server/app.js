@@ -5,15 +5,18 @@ const db = require('./config/db');
 const app = express();
 
 // ======================
+// 🔥 REQUEST LOGGER (VERY IMPORTANT)
+// ======================
+app.use((req, res, next) => {
+  console.log(`🔥 Incoming: ${req.method} ${req.url}`);
+  next();
+});
+
+// ======================
 // ✅ MIDDLEWARE
 // ======================
-
-// 🔥 Allow all origins (fixes Railway 502 issue)
 app.use(cors());
-
-// Parse JSON
 app.use(express.json());
-
 
 // ======================
 // ✅ ROUTES
@@ -28,18 +31,31 @@ app.use('/api/stops', stopsRoute);
 app.use('/api/buses', busesRoute);
 app.use('/api/location', locationsRoute);
 
-
 // ======================
-// ✅ HEALTH CHECK (IMPORTANT)
+// 🔥 HEALTH CHECK (SAFE)
 // ======================
 app.get('/api/health', (req, res) => {
-  res.status(200).json({
-    status: 'ok',
-    message: 'SmartBus backend running',
-    timestamp: new Date().toISOString()
-  });
+  try {
+    console.log("✅ HEALTH ROUTE HIT");
+
+    res.status(200).json({
+      status: 'ok',
+      message: 'SmartBus backend running',
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (err) {
+    console.error("❌ Health error:", err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
+// ======================
+// ✅ ROOT ROUTE (IMPORTANT FOR RAILWAY)
+// ======================
+app.get('/', (req, res) => {
+  res.send('SmartBus Backend is Running 🚀');
+});
 
 // ======================
 // ✅ 404 HANDLER
@@ -52,23 +68,16 @@ app.use((req, res) => {
   });
 });
 
-
 // ======================
-// ✅ GLOBAL ERROR HANDLER
+// 🔥 GLOBAL ERROR HANDLER
 // ======================
 app.use((err, req, res, next) => {
-  console.error('Error:', err.message);
+  console.error('❌ Express Error:', err);
 
-  res.status(err.status || 500).json({
+  res.status(500).json({
     error: 'Internal Server Error',
-    message: process.env.NODE_ENV === 'production'
-      ? 'Something went wrong'
-      : err.message
+    message: err.message
   });
 });
 
-
-// ======================
-// EXPORT
-// ======================
 module.exports = app;
