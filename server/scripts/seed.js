@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 
 // DB path
-const dbPath = path.join(__dirname, '../../database/smartbus.db');
+const dbPath = path.join(__dirname, '../database/smartbus.db');
 
 // Connect DB
 const db = new sqlite3.Database(dbPath, (err) => {
@@ -16,7 +16,7 @@ const db = new sqlite3.Database(dbPath, (err) => {
 });
 
 function runSeed() {
-  const seedPath = path.join(__dirname, '../../database/seed.sql');
+  const seedPath = path.join(__dirname, '../database/seed.sql');
 
   try {
     const seedSQL = fs.readFileSync(seedPath, 'utf8');
