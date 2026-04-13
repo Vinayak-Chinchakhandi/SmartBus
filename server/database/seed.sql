@@ -46,24 +46,86 @@ INSERT OR IGNORE INTO stops (route_id, name, latitude, longitude, stop_order) VA
 -- ======================
 -- BUSES
 -- ======================
-INSERT OR IGNORE INTO buses (id, bus_number, capacity, status) VALUES
-(1, 'MH-01-AB-1234', 40, 'active'),
-(2, 'MH-02-CD-5678', 35, 'active'),
-(3, 'MH-03-EF-9012', 50, 'active');
+INSERT OR IGNORE INTO buses (id, bus_number, route_id, driver_name, driver_phone) VALUES
+(1, 'MH-01-AB-1234', 1, 'Ramesh Patil', '9876543210'),
+(2, 'MH-02-CD-5678', 2, 'Suresh Kumar', '9876543211'),
+(3, 'MH-03-EF-9012', 3, 'Mahesh Singh', '9876543212');
 
 -- ======================
 -- TRIPS (Each bus assigned to route)
 -- ======================
-INSERT OR IGNORE INTO trips (id, bus_id, route_id, status) VALUES
-(1, 1, 1, 'running'),
-(2, 2, 2, 'running'),
-(3, 3, 3, 'running');
+INSERT OR IGNORE INTO trips (id, bus_id, route_id, trip_date, trip_type, status) VALUES
+(1, 1, 1, '2026-04-12', 'pickup', 'on_time'),
+(2, 2, 2, '2026-04-12', 'pickup', 'on_time'),
+(3, 3, 3, '2026-04-12', 'pickup', 'on_time');
 
 -- ======================
--- INITIAL BUS LOCATIONS
--- (Start from first stop of each route)
+-- WEEKLY SCHEDULE (MON–SAT)
 -- ======================
-INSERT OR IGNORE INTO bus_locations (bus_id, latitude, longitude, speed) VALUES
-(1, 19.2290, 72.8570, 30),
-(2, 19.0726, 72.8796, 25),
-(3, 18.9067, 72.8147, 20);
+
+INSERT OR IGNORE INTO schedules (route_id, day_of_week, trip_type, pickup_time, drop_time) VALUES
+
+-- ======================
+-- ROUTE 1 (Borivali)
+-- ======================
+(1, 'Monday',    'pickup', '07:30', '08:30'),
+(1, 'Monday',    'drop',   '16:30', '17:30'),
+
+(1, 'Tuesday',   'pickup', '07:30', '08:30'),
+(1, 'Tuesday',   'drop',   '16:30', '17:30'),
+
+(1, 'Wednesday', 'pickup', '07:30', '08:30'),
+(1, 'Wednesday', 'drop',   '16:30', '17:30'),
+
+(1, 'Thursday',  'pickup', '07:30', '08:30'),
+(1, 'Thursday',  'drop',   '16:30', '17:30'),
+
+(1, 'Friday',    'pickup', '07:30', '08:30'),
+(1, 'Friday',    'drop',   '16:30', '17:30'),
+
+(1, 'Saturday',  'pickup', '07:30', '08:30'),
+(1, 'Saturday',  'drop',   '16:30', '17:30'),
+
+
+-- ======================
+-- ROUTE 2 (Kurla)
+-- ======================
+(2, 'Monday',    'pickup', '07:45', '08:30'),
+(2, 'Monday',    'drop',   '16:30', '17:30'),
+
+(2, 'Tuesday',   'pickup', '07:45', '08:30'),
+(2, 'Tuesday',   'drop',   '16:30', '17:30'),
+
+(2, 'Wednesday', 'pickup', '07:45', '08:30'),
+(2, 'Wednesday', 'drop',   '16:30', '17:30'),
+
+(2, 'Thursday',  'pickup', '07:45', '08:30'),
+(2, 'Thursday',  'drop',   '16:30', '17:30'),
+
+(2, 'Friday',    'pickup', '07:45', '08:30'),
+(2, 'Friday',    'drop',   '16:30', '17:30'),
+
+(2, 'Saturday',  'pickup', '07:45', '08:30'),
+(2, 'Saturday',  'drop',   '16:30', '17:30'),
+
+
+-- ======================
+-- ROUTE 3 (Colaba)
+-- ======================
+(3, 'Monday',    'pickup', '07:00', '08:30'),
+(3, 'Monday',    'drop',   '16:30', '18:00'),
+
+(3, 'Tuesday',   'pickup', '07:00', '08:30'),
+(3, 'Tuesday',   'drop',   '16:30', '18:00'),
+
+(3, 'Wednesday', 'pickup', '07:00', '08:30'),
+(3, 'Wednesday', 'drop',   '16:30', '18:00'),
+
+(3, 'Thursday',  'pickup', '07:00', '08:30'),
+(3, 'Thursday',  'drop',   '16:30', '18:00'),
+
+(3, 'Friday',    'pickup', '07:00', '08:30'),
+(3, 'Friday',    'drop',   '16:30', '18:00'),
+
+(3, 'Saturday',  'pickup', '07:00', '08:30'),
+(3, 'Saturday',  'drop',   '16:30', '18:00');

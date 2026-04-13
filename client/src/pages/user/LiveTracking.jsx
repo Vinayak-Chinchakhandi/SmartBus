@@ -361,8 +361,7 @@ function LiveTracking() {
     };
 
     return (
-        <div className="flex h-full relative">
-
+        <div className="flex flex-col md:flex-row h-full relative">
             <div className="flex-1">
                 <MapView
                     busPosition={busPosition?.position}
@@ -378,13 +377,12 @@ function LiveTracking() {
                 />
             </div>
 
-            <div className="w-80 p-4 bg-gray-50">
-                <ETAWidget
-                    currentPosition={busPosition?.position}
-                    route={movementRoute.length > 0 ? movementRoute : routeCoordinates}
-                    speed={30}
-                    startTime={startTime}
-                />
+            <div className="w-full md:w-80 p-3 md:p-4 bg-gray-50">                <ETAWidget
+                currentPosition={busPosition?.position}
+                route={movementRoute.length > 0 ? movementRoute : routeCoordinates}
+                speed={30}
+                startTime={startTime}
+            />
             </div>
 
             <div className="fixed top-4 right-4 z-[1000] space-y-2">

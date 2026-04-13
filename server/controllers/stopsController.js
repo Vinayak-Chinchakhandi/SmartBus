@@ -31,3 +31,53 @@ exports.getStops = (req, res) => {
     res.status(200).json(rows);
   });
 };
+
+// CREATE
+exports.createStop = (req, res) => {
+  stopsModel.createStop(req.body, (err, result) => {
+    if (err) {
+      console.error('🔥 FULL ERROR:', err);   // 👈 ADD THIS
+
+      return res.status(500).json({
+        error: 'Database Error',
+        message: err.message || 'Failed to create stop'  // 👈 SHOW REAL ERROR
+      });
+    }
+
+    res.status(201).json(result);
+  });
+};
+
+// UPDATE
+exports.updateStop = (req, res) => {
+  const { id } = req.params;
+
+  stopsModel.updateStop(id, req.body, (err, result) => {
+    if (err) {
+      console.error('Error updating stop:', err);
+      return res.status(500).json({
+        error: 'Database Error',
+        message: 'Failed to update stop'
+      });
+    }
+
+    res.status(200).json(result);
+  });
+};
+
+// DELETE
+exports.deleteStop = (req, res) => {
+  const { id } = req.params;
+
+  stopsModel.deleteStop(id, (err, result) => {
+    if (err) {
+      console.error('Error deleting stop:', err);
+      return res.status(500).json({
+        error: 'Database Error',
+        message: 'Failed to delete stop'
+      });
+    }
+
+    res.status(200).json(result);
+  });
+};

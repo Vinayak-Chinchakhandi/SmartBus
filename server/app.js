@@ -24,12 +24,12 @@ app.use(express.json());
 const routesRoute = require('./routes/routes');
 const stopsRoute = require('./routes/stops');
 const busesRoute = require('./routes/buses');
-const locationsRoute = require('./routes/locations');
+const schedulesRoute = require('./routes/schedules');
 
 app.use('/api/routes', routesRoute);
 app.use('/api/stops', stopsRoute);
 app.use('/api/buses', busesRoute);
-app.use('/api/location', locationsRoute);
+app.use('/api/schedules', schedulesRoute);
 
 // ======================
 // 🔥 HEALTH CHECK (SAFE)

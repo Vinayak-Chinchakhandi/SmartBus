@@ -18,16 +18,6 @@ function Sidebar() {
             <h3 className="text-sm font-medium text-gray-600 uppercase tracking-wide mb-2">User</h3>
             <nav className="space-y-1">
               <NavLink
-                to="/"
-                className={({ isActive }) =>
-                  `block px-3 py-2 rounded-md text-sm font-medium ${
-                    isActive ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                  }`
-                }
-              >
-                Dashboard
-              </NavLink>
-              <NavLink
                 to="/tracking"
                 className={({ isActive }) =>
                   `block px-3 py-2 rounded-md text-sm font-medium ${
@@ -58,14 +48,14 @@ function Sidebar() {
                 Alerts
               </NavLink>
               <NavLink
-                to="/trip"
+                to="/schedule"
                 className={({ isActive }) =>
                   `block px-3 py-2 rounded-md text-sm font-medium ${
                     isActive ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                   }`
                 }
               >
-                My Trip
+                Schedule
               </NavLink>
             </nav>
           </div>
@@ -74,7 +64,7 @@ function Sidebar() {
               <h3 className="text-sm font-medium text-gray-600 uppercase tracking-wide mb-2">Admin</h3>
               <nav className="space-y-1">
                 <NavLink
-                  to="/admin"
+                  to="/admin/dashboard"
                   className={({ isActive }) =>
                     `block px-3 py-2 rounded-md text-sm font-medium ${
                       isActive ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
@@ -114,14 +104,14 @@ function Sidebar() {
                   Reroute Control
                 </NavLink>
                 <NavLink
-                  to="/admin/analytics"
+                  to="/admin/schedule"
                   className={({ isActive }) =>
                     `block px-3 py-2 rounded-md text-sm font-medium ${
                       isActive ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                     }`
                   }
                 >
-                  Analytics
+                  Schedule Management
                 </NavLink>
               </nav>
             </div>

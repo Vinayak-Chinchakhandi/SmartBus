@@ -17,8 +17,7 @@ function Alerts() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto p-6">
-      <h1 className="text-3xl font-bold text-gray-800 mb-8">Alerts</h1>
+    <div className="w-full max-w-md mx-auto p-4">      <h1 className="text-3xl font-bold text-gray-800 mb-8">Alerts</h1>
 
       <div className="bg-white rounded-lg shadow-md">
         {dummyNotifications.length === 0 ? (

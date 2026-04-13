@@ -10,11 +10,40 @@ const db = new sqlite3.Database(dbPath, (err) => {
   if (err) {
     console.error('DB connection error:', err.message);
   } else {
-    console.log('Connected to DB for seeding');
-    runSeed();
+    console.log('Connected to DB');
+
+    db.run('PRAGMA foreign_keys = ON');
+
+    runSchema();
   }
 });
 
+// ======================
+// STEP 1: CREATE TABLES
+// ======================
+function runSchema() {
+  const schemaPath = path.join(__dirname, '../database/schema.sql');
+
+  try {
+    const schemaSQL = fs.readFileSync(schemaPath, 'utf8');
+
+    db.exec(schemaSQL, (err) => {
+      if (err) {
+        console.error('Schema error:', err.message);
+      } else {
+        console.log('✅ Schema created');
+
+        runSeed(); // next step
+      }
+    });
+  } catch (error) {
+    console.error('Error reading schema file:', error.message);
+  }
+}
+
+// ======================
+// STEP 2: INSERT DATA
+// ======================
 function runSeed() {
   const seedPath = path.join(__dirname, '../database/seed.sql');
 
@@ -25,7 +54,7 @@ function runSeed() {
       if (err) {
         console.error('Seed error:', err.message);
       } else {
-        console.log('✅ Seed data inserted successfully');
+        console.log('✅ Seed data inserted');
       }
 
       db.close();
