@@ -96,3 +96,16 @@ CREATE TABLE IF NOT EXISTS admins (
   password_hash TEXT NOT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+-- ======================
+-- REROUTES
+-- ======================
+CREATE TABLE IF NOT EXISTS reroutes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  route_id INTEGER NOT NULL,
+  reroute_path TEXT NOT NULL, -- JSON string
+  is_active BOOLEAN DEFAULT 1,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  
+  FOREIGN KEY (route_id) REFERENCES routes(id) ON DELETE CASCADE
+);

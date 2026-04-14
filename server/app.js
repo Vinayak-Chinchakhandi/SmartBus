@@ -25,11 +25,13 @@ const routesRoute = require('./routes/routes');
 const stopsRoute = require('./routes/stops');
 const busesRoute = require('./routes/buses');
 const schedulesRoute = require('./routes/schedules');
+const reroutesRoute = require('./routes/reroutes');
 
 app.use('/api/routes', routesRoute);
 app.use('/api/stops', stopsRoute);
 app.use('/api/buses', busesRoute);
 app.use('/api/schedules', schedulesRoute);
+app.use('/api/reroutes', reroutesRoute);
 
 // ======================
 // 🔥 HEALTH CHECK (SAFE)

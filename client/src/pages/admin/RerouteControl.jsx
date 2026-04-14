@@ -14,6 +14,8 @@ function RerouteControl() {
   const [isApplying, setIsApplying] = useState(false);
   const [routeOptions, setRouteOptions] = useState([]);
   const [selectedOption, setSelectedOption] = useState(null);
+  const [activeReroute, setActiveReroute] = useState(null);
+  const [originalRoute, setOriginalRoute] = useState([]);
 
   useEffect(() => {
     fetchRoutes();
@@ -41,7 +43,47 @@ function RerouteControl() {
       const res = await fetch(`${BASE_URL}/api/stops/${routeId}`);
       if (res.ok) {
         const data = await res.json();
-        setStops(Array.isArray(data) ? data.sort((a, b) => a.stop_order - b.stop_order) : []);
+        let stopsData = Array.isArray(data) ? data.sort((a, b) => a.stop_order - b.stop_order) : [];
+        setStops(stopsData);
+
+        const coords = stopsData.map(s => [s.latitude, s.longitude]);
+
+        if (coords.length >= 2) {
+          const waypointString = coords
+            .map(([lat, lng]) => `${lng},${lat}`)
+            .join(';');
+
+          const resRoute = await fetch(
+            `https://routing.openstreetmap.de/routed-car/route/v1/driving/${waypointString}?overview=full&geometries=geojson`
+          );
+
+          const dataRoute = await resRoute.json();
+
+          if (dataRoute.routes && dataRoute.routes.length > 0) {
+            const route = dataRoute.routes[0].geometry.coordinates.map(
+              ([lng, lat]) => [lat, lng]
+            );
+            setOriginalRoute(route);
+          }
+        }
+
+        // Check for active reroute
+        try {
+          const rerouteRes = await fetch(`${BASE_URL}/api/reroutes/${routeId}`);
+          if (rerouteRes.ok) {
+            const reroute = await rerouteRes.json();
+            if (reroute && reroute.reroute_path) {
+              setActiveReroute(reroute);
+            } else {
+              setActiveReroute(null);
+            }
+          } else {
+            setActiveReroute(null);
+          }
+        } catch (rerouteErr) {
+          console.error('Error fetching reroute:', rerouteErr);
+          setActiveReroute(null);
+        }
       }
       setBlockagePoint(null);
       setRouteOptions([]);
@@ -54,7 +96,41 @@ function RerouteControl() {
 
   const handleRouteChange = (routeId) => {
     setSelectedRoute(routeId);
+    setActiveReroute(null); // Reset active reroute when changing routes
     fetchStops(routeId);
+  };
+
+  const handleResetRoute = async () => {
+    try {
+      // Call backend reset API
+      const res = await fetch(`${BASE_URL}/api/reroutes/${selectedRoute}`, {
+        method: 'DELETE'
+      });
+
+      if (!res.ok) {
+        throw new Error("Reset failed");
+      }
+    } catch (err) {
+      console.error('Error resetting reroute:', err);
+    }
+
+    // Clear localStorage fallback
+    setActiveReroute(null);
+    setRouteOptions([]);
+    setSelectedOption(null);
+    setBlockagePoint(null);
+    setError(null);
+  };
+
+  const isPointNearRoute = (point, route, threshold = 0.005) => {
+    if (!route || route.length < 2) return false;
+
+    for (let i = 0; i < route.length - 1; i += 1) {
+      const dist = getDistanceToLineSegment(point, route[i], route[i + 1]);
+      if (dist < threshold) return true;
+    }
+
+    return false;
   };
 
   const handleMapClick = (e) => {
@@ -62,48 +138,119 @@ function RerouteControl() {
       setError('Please select a route first');
       return;
     }
-    setBlockagePoint([e.latlng.lat, e.latlng.lng]);
-    generateAlternativeRoutes([e.latlng.lat, e.latlng.lng]);
+
+    const clickedPoint = [e.latlng.lat, e.latlng.lng];
+    const routeToCheck = activeReroute
+      ? activeReroute.reroute_path
+      : originalRoute;
+
+    if (!isPointNearRoute(clickedPoint, routeToCheck)) {
+      setError('❌ Click near the route');
+      return;
+    }
+
+    setError(null);
+    setBlockagePoint(clickedPoint);
+    generateAlternativeRoutes(clickedPoint);
   };
 
   const generateAlternativeRoutes = async (blockage) => {
     if (!stops || stops.length < 2) return;
 
     const coords = stops.map(s => [s.latitude, s.longitude]);
+    const waypointString = coords.map(([lat, lng]) => `${lng},${lat}`).join(';');
 
-    const start = coords[0];
-    const end = coords[coords.length - 1];
+    const OSRM_URL = (str) =>
+      `https://routing.openstreetmap.de/routed-car/route/v1/driving/${str}?overview=full&geometries=geojson`;
+
+    const fetchRoute = async (waypointString) => {
+      const res = await fetch(OSRM_URL(waypointString));
+      const data = await res.json();
+      if (!data.routes || data.routes.length === 0) return null;
+      return {
+        path: data.routes[0].geometry.coordinates.map(([lng, lat]) => [lat, lng]),
+        distance: data.routes[0].distance
+      };
+    };
 
     try {
-      const baseUrl = `https://routing.openstreetmap.de/routed-car/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson`;
+      const originalRoute = await fetchRoute(waypointString);
+      if (!originalRoute) return;
 
-      const res1 = await fetch(baseUrl);
-      const data1 = await res1.json();
-      if (!data1.routes || data1.routes.length === 0) return;
-      const route1 = data1.routes[0].geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+      let closestSegmentIndex = 0;
+      let minDistance = Infinity;
 
-      const mid = coords[Math.floor(coords.length / 2)];
+      for (let i = 0; i < coords.length - 1; i += 1) {
+        const dist = getDistanceToLineSegment(blockage, coords[i], coords[i + 1]);
+        if (dist < minDistance) {
+          minDistance = dist;
+          closestSegmentIndex = i;
+        }
+      }
 
-      const altMid = [mid[0] + 0.01, mid[1] + 0.01];
-      const res2 = await fetch(`https://routing.openstreetmap.de/routed-car/route/v1/driving/${start[1]},${start[0]};${altMid[1]},${altMid[0]};${end[1]},${end[0]}?overview=full&geometries=geojson`);
-      const data2 = await res2.json();
-      if (!data2.routes || data2.routes.length === 0) return;
-      const route2 = data2.routes[0].geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+      const beforeStops = coords.slice(0, closestSegmentIndex + 1);
+      const afterStops = coords.slice(closestSegmentIndex + 1);
+      const start = coords[closestSegmentIndex];
+      const end = coords[closestSegmentIndex + 1];
 
-      const altMid2 = [mid[0] - 0.01, mid[1] - 0.01];
-      const res3 = await fetch(`https://routing.openstreetmap.de/routed-car/route/v1/driving/${start[1]},${start[0]};${altMid2[1]},${altMid2[0]};${end[1]},${end[0]}?overview=full&geometries=geojson`);
-      const data3 = await res3.json();
-      if (!data3.routes || data3.routes.length === 0) return;
-      const route3 = data3.routes[0].geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+      const dx = end[1] - start[1];
+      const dy = end[0] - start[0];
+      const perp1 = [-dy, dx];
+      const perp2 = [dy, -dx];
+      const length = Math.sqrt(perp1[0] ** 2 + perp1[1] ** 2);
+      if (length === 0) return;
+      const unit1 = [perp1[0] / length, perp1[1] / length];
+      const unit2 = [perp2[0] / length, perp2[1] / length];
+      const distances = [0.01, 0.015, 0.02];
 
-      setRouteOptions([
-        { id: 1, path: route1, label: "Original Route", color: "red" },
-        { id: 2, path: route2, label: "AI Suggested Route", color: "green" },
-        { id: 3, path: route3, label: "Alternative Route", color: "gray" }
-      ]);
+      const bypassPoints = [
+        ...distances.map(d => [blockage[0] + unit1[0] * d, blockage[1] + unit1[1] * d]),
+        ...distances.map(d => [blockage[0] + unit2[0] * d, blockage[1] + unit2[1] * d])
+      ];
 
+      const alternativePromises = bypassPoints.map(async (bypassPoint) => {
+        const newCoords = [...beforeStops, bypassPoint, ...afterStops];
+        const waypointString = newCoords.map(([lat, lng]) => `${lng},${lat}`).join(';');
+        return fetchRoute(waypointString);
+      });
+
+      const alternativeResults = await Promise.all(alternativePromises);
+      const alternatives = alternativeResults.filter(Boolean);
+      if (alternatives.length === 0) {
+        setRouteOptions([
+          { id: 1, path: originalRoute.path, label: "Original Route", color: "#ef4444" }
+        ]);
+        setSelectedOption(1);
+        return;
+      }
+
+      const bestRoute = alternatives.reduce((best, current) => {
+        const score = current.distance;
+        return score < best.score
+          ? { ...current, score }
+          : best;
+      }, { ...alternatives[0], score: alternatives[0].distance });
+
+      const detailColors = ["#1d4ed8", "#9333ea", "#f59e0b"];
+      const optionRoutes = [
+        { id: 1, path: originalRoute.path, label: "Original Route", color: "#ef4444" },
+        { id: 2, path: bestRoute.path, label: "AI Suggested Route", color: "#22c55e" }
+      ];
+
+      alternatives
+        .filter(route => route !== bestRoute)
+        .slice(0, 3)
+        .forEach((route, index) => {
+          optionRoutes.push({
+            id: 3 + index,
+            path: route.path,
+            label: "Alternative Route",
+            color: detailColors[index]
+          });
+        });
+
+      setRouteOptions(optionRoutes);
       setSelectedOption(2);
-
     } catch (err) {
       console.error("OSRM error", err);
     }
@@ -129,44 +276,30 @@ function RerouteControl() {
       return;
     }
 
-    const newRoutePath = selectedRouteObj.path;
     try {
       setIsApplying(true);
       setError(null);
 
-      // Update all stops with new coordinates
-      const updatePromises = stops.map((stop, index) => {
-        const mappedIndex = Math.floor(
-          (index / (stops.length - 1)) * (newRoutePath.length - 1)
-        );
-
-        const point = newRoutePath[mappedIndex] || newRoutePath[newRoutePath.length - 1];
-
-        return fetch(`${BASE_URL}/api/stops/${stop.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: stop.name,
-            latitude: point[0],
-            longitude: point[1],
-            stop_order: stop.stop_order
-          })
-        });
+      // Send reroute to backend API
+      const response = await fetch(`${BASE_URL}/api/reroutes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          route_id: selectedRoute,
+          reroute_path: selectedRouteObj.path
+        })
       });
 
-      const results = await Promise.all(updatePromises);
-      const allSuccess = results.every(res => res.ok);
-
-      if (allSuccess) {
-        setError(null);
-        alert('Alternative route applied successfully!');
-        setBlockagePoint(null);
-        setRouteOptions([]);
-        setSelectedOption(null);
-        fetchStops(selectedRoute);
-      } else {
-        setError('Failed to apply some route updates');
+      if (!response.ok) {
+        throw new Error('Failed to save reroute');
       }
+
+      setError(null);
+      alert('Alternative route applied successfully!');
+      setBlockagePoint(null);
+      setRouteOptions([]);
+      setSelectedOption(null);
+      fetchStops(selectedRoute); // Refresh stops
 
       setIsApplying(false);
     } catch (err) {
@@ -186,8 +319,9 @@ function RerouteControl() {
     );
   }
 
-  const currentRoute = stops.map(s => [s.latitude, s.longitude]);
-  const center = stops.length > 0 ? [stops[0].latitude, stops[0].longitude] : [0, 0];
+  const currentRoute = activeReroute
+    ? activeReroute.reroute_path
+    : originalRoute; const center = stops.length > 0 ? [stops[0].latitude, stops[0].longitude] : [0, 0];
 
   const selectedRouteObj = routeOptions.find(r => r.id === selectedOption);
 
@@ -247,6 +381,13 @@ function RerouteControl() {
             Clear Blockage
           </button>
 
+          <button
+            onClick={handleResetRoute}
+            className="px-6 py-2 bg-red-500 hover:bg-red-600 text-white font-medium rounded-lg transition"
+          >
+            Reset to Original
+          </button>
+
           {routeOptions.length > 0 && (
             <button
               onClick={handleApplyRoute}
@@ -278,13 +419,13 @@ function RerouteControl() {
             <MapContainer center={center} zoom={13} className="h-full w-full">
               <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
-              {/* Original Route (dashed) */}
+              {/* Original Route (dashed) or Active Reroute (solid) */}
               {currentRoute.length > 1 && (
                 <Polyline
                   positions={currentRoute}
-                  color="#2563eb"
+                  color={activeReroute ? "#10b981" : "#2563eb"}
                   weight={3}
-                  dashArray="5, 5"
+                  dashArray={activeReroute ? "0" : "5, 5"}
                   opacity={0.7}
                 />
               )}
@@ -391,9 +532,14 @@ function RerouteControl() {
                 <div className="mt-2 p-2 bg-blue-50 rounded">
                   <p className="text-blue-800 text-xs font-medium">Original Route (Dashed)</p>
                 </div>
-                {routeOptions.length > 0 && (
+                {activeReroute && (
                   <div className="p-2 bg-green-50 rounded">
-                    <p className="text-green-800 text-xs font-medium">Alternative Route (Solid)</p>
+                    <p className="text-green-800 text-xs font-medium">Active Reroute (Solid)</p>
+                  </div>
+                )}
+                {routeOptions.length > 0 && (
+                  <div className="p-2 bg-yellow-50 rounded">
+                    <p className="text-yellow-800 text-xs font-medium">Preview Routes</p>
                   </div>
                 )}
                 {blockagePoint && (
