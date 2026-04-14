@@ -1,15 +1,14 @@
 import React from "react";
-import { BrowserRouter } from "react-router-dom";
-import AppRouter from "./routes/AppRouter";
-import MobileRouter from "./routes/MobileRouter";
+import AppRouter from "./router/AppRouter";
+import MobileRouter from "./router/MobileRouter";
 
-const isMobileBuild = true; // 🔥 CHANGE THIS
+const isMobileBuild = false; // 🔥 CHANGE THIS
 
 function App() {
   return (
-    <BrowserRouter>
+    <>
       {isMobileBuild ? <MobileRouter /> : <AppRouter />}
-    </BrowserRouter>
+    </>
   );
 }
 

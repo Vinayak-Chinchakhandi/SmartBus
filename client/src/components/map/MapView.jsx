@@ -2,8 +2,20 @@ import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Polyline } from 'react-leaflet';
 import L from 'leaflet';
 
-function MapView({ route, stops, busPosition, busAngle, routeId, onRouteReady, currentStopIndex, visitedStopIndex, isAtStop, direction }) {
-  const [roadRoute, setRoadRoute] = useState([]);
+function MapView({
+  routes,
+  route,
+  stops,
+  busPosition,
+  busAngle,
+  routeId,
+  onRouteReady,
+  currentStopIndex,
+  visitedStopIndex,
+  isAtStop,
+  direction
+}) {
+  const [roadRoutes, setRoadRoutes] = useState({});
 
   const routeColorMap = {
     1: '#2563eb',
@@ -12,94 +24,119 @@ function MapView({ route, stops, busPosition, busAngle, routeId, onRouteReady, c
     4: '#f59e0b'
   };
 
-  const routeColor = routeColorMap[routeId] || '#2563eb';
+  const routeItems = Array.isArray(routes)
+    ? routes
+    : [
+        {
+          routeId,
+          route,
+          stops,
+          busPosition,
+          busAngle,
+          currentStopIndex,
+          visitedStopIndex,
+          isAtStop,
+          direction
+        }
+      ];
+
+  const routeKeys = routeItems
+    .map((item) => `${item.routeId}:${item.route?.length ?? 0}`)
+    .join('|');
 
   useEffect(() => {
-    if (!route || route.length < 2) {
-      setRoadRoute([]);
+    if (!routeItems || routeItems.length === 0) {
+      setRoadRoutes({});
       return;
     }
 
     let isMounted = true;
 
-    const fetchRoadRoute = async () => {
-      const coordinates = route
-        .map(([lat, lng]) => `${lng},${lat}`)
-        .join(';');
+    routeItems.forEach((routeItem) => {
+      if (!routeItem.route || routeItem.route.length < 2) return;
 
-      const url = `https://routing.openstreetmap.de/routed-car/route/v1/driving/${coordinates}?overview=full&geometries=geojson`;
+      const fetchRoadRoute = async () => {
+        const coordinates = routeItem.route
+          .map(([lat, lng]) => `${lng},${lat}`)
+          .join(';');
 
-      try {
-        const response = await fetch(url);
-        const data = await response.json();
+        const url = `https://routing.openstreetmap.de/routed-car/route/v1/driving/${coordinates}?overview=full&geometries=geojson`;
 
-        const osrmCoords = data?.routes?.[0]?.geometry?.coordinates;
+        try {
+          const response = await fetch(url);
+          const data = await response.json();
 
-        if (isMounted && osrmCoords && osrmCoords.length > 0) {
-          const transformed = osrmCoords.map(([lng, lat]) => [lat, lng]);
+          const osrmCoords = data?.routes?.[0]?.geometry?.coordinates;
 
-          console.log("✅ Road route loaded:", transformed.length);
+          if (isMounted && osrmCoords && osrmCoords.length > 0) {
+            const transformed = osrmCoords.map(([lng, lat]) => [lat, lng]);
+            const routeKey = String(routeItem.routeId);
 
-          setRoadRoute(transformed);
-          onRouteReady && onRouteReady(transformed);
-        } else if (isMounted) {
-          setRoadRoute(route);
-          onRouteReady && onRouteReady(route);
+            setRoadRoutes((prev) => ({
+              ...prev,
+              [routeKey]: transformed
+            }));
+
+            onRouteReady && onRouteReady(routeKey, transformed);
+          } else if (isMounted) {
+            const routeKey = String(routeItem.routeId);
+
+            setRoadRoutes((prev) => ({
+              ...prev,
+              [routeKey]: routeItem.route
+            }));
+
+            onRouteReady && onRouteReady(routeKey, routeItem.route);
+          }
+        } catch (error) {
+          console.error('? OSRM route error:', error);
+          if (isMounted) {
+            setRoadRoutes((prev) => ({
+              ...prev,
+              [routeItem.routeId]: routeItem.route
+            }));
+            onRouteReady && onRouteReady(routeItem.routeId, routeItem.route);
+          }
         }
-      } catch (error) {
-        console.error('❌ OSRM route error:', error);
-        if (isMounted) {
-          setRoadRoute(route);
-          onRouteReady && onRouteReady(route);
-        }
-      }
-    };
+      };
 
-    fetchRoadRoute();
+      fetchRoadRoute();
+    });
 
     return () => {
       isMounted = false;
     };
-  }, [route, routeId]);
+  }, [routeKeys]);
 
-  if (!busPosition || !route || route.length === 0) {
-    return (
-      <div className="h-screen flex items-center justify-center">
-        Loading Map...
-      </div>
-    );
-  }
+  const allBusPositions = routeItems
+    .map((item) => item.busPosition)
+    .filter(Boolean);
 
-  const center = busPosition || route[0] || [0, 0];
+  const center =
+    allBusPositions.length > 0
+      ? allBusPositions[0]
+      : routeItems[0]?.route?.[0] || [0, 0];
 
-  const angle = busAngle || 0;
-
-  const busIcon = L.divIcon({
-    html: `<img src="/bus.png" style="
-    width:100%;
-    height:100%;
-    object-fit: contain;
-    transform: rotate(${angle - 90}deg);
-    transition: transform 0.2s linear;
-  " />`,
-    className: '',
-    iconSize: [50, 110],
-    iconAnchor: [25, 55],
-  });
+  const busIcon = (angle) =>
+    L.divIcon({
+      html: `<img src="/bus.png" style="
+        width:100%;
+        height:100%;
+        object-fit: contain;
+        transform: rotate(${angle - 90}deg);
+        transition: transform 0.2s linear;
+      " />`,
+      className: '',
+      iconSize: [50, 110],
+      iconAnchor: [25, 55]
+    });
 
   const collegeIcon = L.divIcon({
     html: '🏫',
     className: 'custom-marker',
     iconSize: [25, 25],
-    iconAnchor: [12, 12],
+    iconAnchor: [12, 12]
   });
-
-  const lastStop =
-    stops && stops.length > 0
-      ? stops.reduce((max, stop) =>
-        stop.stop_order > max.stop_order ? stop : max,
-        stops[0])
-      : null;
 
   return (
     <>
@@ -110,7 +147,7 @@ function MapView({ route, stops, busPosition, busAngle, routeId, onRouteReady, c
   border: none;
 }
 
-/* 🔥 CURRENT STOP (BLINK ONLY WHEN BUS IS THERE) */
+/* ?? CURRENT STOP (BLINK ONLY WHEN BUS IS THERE) */
 .current-stop {
   width: 22px;
   height: 22px;
@@ -120,7 +157,7 @@ function MapView({ route, stops, busPosition, busAngle, routeId, onRouteReady, c
   animation: blink 1s infinite;
 }
 
-/* 🟡 NEXT STOP */
+/* ?? NEXT STOP */
 .next-stop {
   width: 18px;
   height: 18px;
@@ -128,7 +165,7 @@ function MapView({ route, stops, busPosition, busAngle, routeId, onRouteReady, c
   border-radius: 50%;
 }
 
-/* ⚫ VISITED */
+/* ? VISITED */
 .past-stop {
   width: 16px;
   height: 16px;
@@ -136,7 +173,7 @@ function MapView({ route, stops, busPosition, busAngle, routeId, onRouteReady, c
   border-radius: 50%;
 }
 
-/* 🔵 FUTURE */
+/* ?? FUTURE */
 .future-stop {
   width: 16px;
   height: 16px;
@@ -144,7 +181,7 @@ function MapView({ route, stops, busPosition, busAngle, routeId, onRouteReady, c
   border-radius: 50%;
 }
 
-/* 🔥 BLINK EFFECT */
+/* ?? BLINK EFFECT */
 @keyframes blink {
   0% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.4; transform: scale(1.3); }
@@ -159,75 +196,87 @@ function MapView({ route, stops, busPosition, busAngle, routeId, onRouteReady, c
           attribution="&copy; OpenStreetMap contributors"
         />
 
-        {/* ✅ Use roadRoute if available */}
-        <Polyline
-          positions={roadRoute.length > 0 ? roadRoute : route}
-          color={routeColor}
-        />
+        {routeItems.map((routeItem) => {
+          const {
+            routeId,
+            route: itemRoute,
+            stops: itemStops,
+            busPosition: itemBusPosition,
+            busAngle: itemBusAngle,
+            currentStopIndex: itemCurrentStopIndex,
+            visitedStopIndex: itemVisitedStopIndex,
+            isAtStop: itemIsAtStop
+          } = routeItem;
 
-        {stops &&
-          stops.map((stop, index) => {
-            let icon;
+          if (!itemRoute || itemRoute.length === 0) {
+            return null;
+          }
 
-            const isVisited = index <= visitedStopIndex;
-            const isCurrent = index === currentStopIndex;
-            const isNext = index === visitedStopIndex + 1;
+          const routeColor = routeColorMap[routeId] || '#2563eb';
+          const routeKey = String(routeId);
+          const displayRoute = roadRoutes[routeKey]?.length > 0 ? roadRoutes[routeKey] : itemRoute;
 
-            // 🏫 FINAL STOP
-            if (stop.id === lastStop?.id) {
-              icon = collegeIcon;
-            }
+          const lastStop =
+            itemStops && itemStops.length > 0
+              ? itemStops.reduce((max, stop) =>
+                  stop.stop_order > max.stop_order ? stop : max,
+                  itemStops[0]
+                )
+              : null;
 
-            // 🔥 CURRENT STOP (BLINK WHEN BUS IS THERE)
-            else if (isCurrent && isAtStop) {
-              icon = L.divIcon({
-                html: `<div class="current-stop"></div>`,
-                className: '',
-                iconSize: [22, 22],
-                iconAnchor: [11, 11],
-              });
-            }
+          return (
+            <React.Fragment key={routeId || itemRoute[0]?.toString() || Math.random()}>
+              <Polyline positions={displayRoute} color={routeColor} />
 
-            // 🟡 NEXT STOP
-            else if (isNext) {
-              icon = L.divIcon({
-                html: `<div class="next-stop"></div>`,
-                className: '',
-                iconSize: [18, 18],
-                iconAnchor: [9, 9],
-              });
-            }
+              {itemStops &&
+                itemStops.map((stop, index) => {
+                  let icon;
 
-            // ⚫ VISITED
-            else if (isVisited) {
-              icon = L.divIcon({
-                html: `<div class="past-stop"></div>`,
-                className: '',
-                iconSize: [16, 16],
-                iconAnchor: [8, 8],
-              });
-            }
+                  const isVisited = index <= itemVisitedStopIndex;
+                  const isCurrent = index === itemCurrentStopIndex;
+                  const isNext = index === itemVisitedStopIndex + 1;
 
-            // 🔵 FUTURE
-            else {
-              icon = L.divIcon({
-                html: `<div class="future-stop"></div>`,
-                className: '',
-                iconSize: [16, 16],
-                iconAnchor: [8, 8],
-              });
-            }
+                  if (stop.id === lastStop?.id) {
+                    icon = collegeIcon;
+                  } else if (isCurrent && itemIsAtStop) {
+                    icon = L.divIcon({
+                      html: `<div class="current-stop"></div>`,
+                      className: '',
+                      iconSize: [22, 22],
+                      iconAnchor: [11, 11]
+                    });
+                  } else if (isNext) {
+                    icon = L.divIcon({
+                      html: `<div class="next-stop"></div>`,
+                      className: '',
+                      iconSize: [18, 18],
+                      iconAnchor: [9, 9]
+                    });
+                  } else if (isVisited) {
+                    icon = L.divIcon({
+                      html: `<div class="past-stop"></div>`,
+                      className: '',
+                      iconSize: [16, 16],
+                      iconAnchor: [8, 8]
+                    });
+                  } else {
+                    icon = L.divIcon({
+                      html: `<div class="future-stop"></div>`,
+                      className: '',
+                      iconSize: [16, 16],
+                      iconAnchor: [8, 8]
+                    });
+                  }
 
-            return (
-              <Marker
-                key={stop.id}
-                position={[stop.latitude, stop.longitude]}
-                icon={icon}
-              />
-            );
-          })}
+                  return <Marker key={stop.id} position={[stop.latitude, stop.longitude]} icon={icon} />;
+                })}
 
-        <Marker position={busPosition} icon={busIcon} />
+              {itemBusPosition && (
+                <Marker position={itemBusPosition} icon={busIcon(itemBusAngle || 0)} />
+              )}
+            </React.Fragment>
+          );
+        })}
       </MapContainer>
     </>
   );

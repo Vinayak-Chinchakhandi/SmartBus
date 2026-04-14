@@ -1,41 +1,25 @@
-import React from 'react';
-import { Routes, Route } from 'react-router-dom';
-import MainLayout from '../layout/MainLayout';
-import ProtectedRoute from './ProtectedRoute';
+import { Routes, Route, Navigate } from "react-router-dom";
 
-// USER
-import LiveTracking from '../pages/user/LiveTracking';
-import RouteSelection from '../pages/user/RouteSelection';
-import Alerts from '../pages/user/Alerts';
-import Schedule from '../pages/user/Schedule';
+import AdminLogin from "../pages/AdminLogin";
+import MainLayout from "../layout/MainLayout";
+import ProtectedRoute from "./ProtectedRoute";
 
-// ADMIN
-import AdminDashboard from '../pages/admin/Dashboard';
-import LiveMonitor from '../pages/admin/LiveMonitor';
-import RouteManagement from '../pages/admin/RouteManagement';
-import RerouteControl from '../pages/admin/RerouteControl';
-import ScheduleManagement from '../pages/admin/ScheduleManagement';
-
-// LOGIN
-import AdminLogin from '../pages/AdminLogin';
+import AdminDashboard from "../pages/admin/Dashboard";
+import LiveMonitor from "../pages/admin/LiveMonitor";
+import RouteManagement from "../pages/admin/RouteManagement";
+import RerouteControl from "../pages/admin/RerouteControl";
+import ScheduleManagement from "../pages/admin/ScheduleManagement";
 
 function AppRouter() {
   return (
     <Routes>
+      {/* DEFAULT REDIRECT */}
+      <Route path="/" element={<Navigate to="/admin-login" />} />
 
-      {/* 🔐 ADMIN LOGIN (NO LAYOUT) */}
+      {/* LOGIN */}
       <Route path="/admin-login" element={<AdminLogin />} />
 
-      {/* 👤 USER ROUTES */}
-      <Route path="/" element={<MainLayout />}>
-        <Route index element={<LiveTracking />} />
-        <Route path="tracking" element={<LiveTracking />} />
-        <Route path="route" element={<RouteSelection />} />
-        <Route path="alerts" element={<Alerts />} />
-        <Route path="schedule" element={<Schedule />} />
-      </Route>
-
-      {/* 🔐 ADMIN ROUTES (PROTECTED FIRST, THEN LAYOUT) */}
+      {/* ADMIN */}
       <Route
         path="/admin"
         element={
@@ -44,13 +28,13 @@ function AppRouter() {
           </ProtectedRoute>
         }
       >
+        <Route index element={<Navigate to="dashboard" />} />
         <Route path="dashboard" element={<AdminDashboard />} />
         <Route path="monitor" element={<LiveMonitor />} />
         <Route path="routes" element={<RouteManagement />} />
         <Route path="reroute" element={<RerouteControl />} />
         <Route path="schedule" element={<ScheduleManagement />} />
       </Route>
-
     </Routes>
   );
 }
