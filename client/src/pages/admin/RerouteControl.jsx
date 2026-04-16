@@ -2,13 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import L from 'leaflet';
 import { BASE_URL } from '../../config/api';
-import { useMapEvents } from 'react-leaflet';
 
 function RerouteControl() {
   const [routes, setRoutes] = useState([]);
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [stops, setStops] = useState([]);
-  const [blockagePoint, setBlockagePoint] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isApplying, setIsApplying] = useState(false);
@@ -16,6 +14,8 @@ function RerouteControl() {
   const [selectedOption, setSelectedOption] = useState(null);
   const [activeReroute, setActiveReroute] = useState(null);
   const [originalRoute, setOriginalRoute] = useState([]);
+  const [fromStop, setFromStop] = useState(null);
+  const [toStop, setToStop] = useState(null);
 
   useEffect(() => {
     fetchRoutes();
@@ -85,7 +85,6 @@ function RerouteControl() {
           setActiveReroute(null);
         }
       }
-      setBlockagePoint(null);
       setRouteOptions([]);
       setSelectedOption(null);
     } catch (err) {
@@ -118,11 +117,10 @@ function RerouteControl() {
     setActiveReroute(null);
     setRouteOptions([]);
     setSelectedOption(null);
-    setBlockagePoint(null);
     setError(null);
   };
 
-  const isPointNearRoute = (point, route, threshold = 0.005) => {
+  const isPointNearRoute = (point, route, threshold = 0.01) => {
     if (!route || route.length < 2) return false;
 
     for (let i = 0; i < route.length - 1; i += 1) {
@@ -133,32 +131,10 @@ function RerouteControl() {
     return false;
   };
 
-  const handleMapClick = (e) => {
-    if (!selectedRoute) {
-      setError('Please select a route first');
-      return;
-    }
-
-    const clickedPoint = [e.latlng.lat, e.latlng.lng];
-    const routeToCheck = activeReroute
-      ? activeReroute.reroute_path
-      : originalRoute;
-
-    if (!isPointNearRoute(clickedPoint, routeToCheck)) {
-      setError('❌ Click near the route');
-      return;
-    }
-
-    setError(null);
-    setBlockagePoint(clickedPoint);
-    generateAlternativeRoutes(clickedPoint);
-  };
-
-  const generateAlternativeRoutes = async (blockage) => {
+  const generateAlternativeRoutes = async () => {
     if (!stops || stops.length < 2) return;
 
     const coords = stops.map(s => [s.latitude, s.longitude]);
-    const waypointString = coords.map(([lat, lng]) => `${lng},${lat}`).join(';');
 
     const OSRM_URL = (str) =>
       `https://routing.openstreetmap.de/routed-car/route/v1/driving/${str}?overview=full&geometries=geojson`;
@@ -167,6 +143,7 @@ function RerouteControl() {
       const res = await fetch(OSRM_URL(waypointString));
       const data = await res.json();
       if (!data.routes || data.routes.length === 0) return null;
+
       return {
         path: data.routes[0].geometry.coordinates.map(([lng, lat]) => [lat, lng]),
         distance: data.routes[0].distance
@@ -174,83 +151,151 @@ function RerouteControl() {
     };
 
     try {
-      const originalRoute = await fetchRoute(waypointString);
-      if (!originalRoute) return;
+      // const originalRoute = await fetchRoute(fullWaypointString);
+      const original = originalRoute; // from useState
+      if (!originalRoute || originalRoute.length === 0) return;
 
-      let closestSegmentIndex = 0;
-      let minDistance = Infinity;
-
-      for (let i = 0; i < coords.length - 1; i += 1) {
-        const dist = getDistanceToLineSegment(blockage, coords[i], coords[i + 1]);
-        if (dist < minDistance) {
-          minDistance = dist;
-          closestSegmentIndex = i;
-        }
-      }
-
-      const beforeStops = coords.slice(0, closestSegmentIndex + 1);
-      const afterStops = coords.slice(closestSegmentIndex + 1);
-      const start = coords[closestSegmentIndex];
-      const end = coords[closestSegmentIndex + 1];
-
-      const dx = end[1] - start[1];
-      const dy = end[0] - start[0];
-      const perp1 = [-dy, dx];
-      const perp2 = [dy, -dx];
-      const length = Math.sqrt(perp1[0] ** 2 + perp1[1] ** 2);
-      if (length === 0) return;
-      const unit1 = [perp1[0] / length, perp1[1] / length];
-      const unit2 = [perp2[0] / length, perp2[1] / length];
-      const distances = [0.01, 0.015, 0.02];
-
-      const bypassPoints = [
-        ...distances.map(d => [blockage[0] + unit1[0] * d, blockage[1] + unit1[1] * d]),
-        ...distances.map(d => [blockage[0] + unit2[0] * d, blockage[1] + unit2[1] * d])
-      ];
-
-      const alternativePromises = bypassPoints.map(async (bypassPoint) => {
-        const newCoords = [...beforeStops, bypassPoint, ...afterStops];
-        const waypointString = newCoords.map(([lat, lng]) => `${lng},${lat}`).join(';');
-        return fetchRoute(waypointString);
-      });
-
-      const alternativeResults = await Promise.all(alternativePromises);
-      const alternatives = alternativeResults.filter(Boolean);
-      if (alternatives.length === 0) {
-        setRouteOptions([
-          { id: 1, path: originalRoute.path, label: "Original Route", color: "#ef4444" }
-        ]);
-        setSelectedOption(1);
+      if (!fromStop || !toStop) {
+        setError("Select both stops");
         return;
       }
 
-      const bestRoute = alternatives.reduce((best, current) => {
+      const startIndex = stops.findIndex(s => s.stop_order === fromStop);
+      const endIndex = stops.findIndex(s => s.stop_order === toStop);
+
+      if (startIndex === -1 || endIndex === -1 || startIndex === endIndex) {
+        setError("Invalid stop selection");
+        return;
+      }
+
+      const start = coords[startIndex];
+      const end = coords[endIndex];
+
+      const generateDetourPoints = (startCoord, endCoord) => {
+        const dx = endCoord[1] - startCoord[1];
+        const dy = endCoord[0] - startCoord[0];
+
+        const length = Math.sqrt(dx * dx + dy * dy);
+        if (length === 0) return [];
+
+        const perp1 = [-dy / length, dx / length];
+        const perp2 = [dy / length, -dx / length];
+
+        const distances = [0.002, 0.004, 0.006];
+
+        const mid = [
+          (startCoord[0] + endCoord[0]) / 2,
+          (startCoord[1] + endCoord[1]) / 2
+        ];
+
+        const points = [];
+
+        distances.forEach(d => {
+          points.push([
+            startCoord,
+            [mid[0] + perp1[0] * d, mid[1] + perp1[1] * d],
+            endCoord
+          ]);
+
+          points.push([
+            startCoord,
+            [mid[0] + perp2[0] * d, mid[1] + perp2[1] * d],
+            endCoord
+          ]);
+        });
+
+        return points;
+      };
+
+      const variations = generateDetourPoints(start, end);
+
+      const alternatives = await Promise.all(
+        variations.map(points => {
+          const str = points.map(([lat, lng]) => `${lng},${lat}`).join(';');
+          return fetchRoute(str);
+        })
+      );
+
+      const validAlternatives = alternatives.filter(Boolean);
+
+      if (validAlternatives.length === 0) {
+        setError("⚠️ No alternative route found. Try different stops.");
+        return;
+      }
+
+      // 🔥 Pick best route based on distance score
+      const bestRoute = validAlternatives.reduce((best, current) => {
         const score = current.distance;
+
         return score < best.score
           ? { ...current, score }
           : best;
-      }, { ...alternatives[0], score: alternatives[0].distance });
+      }, { ...validAlternatives[0], score: validAlternatives[0].distance });
 
-      const detailColors = ["#1d4ed8", "#9333ea", "#f59e0b"];
-      const optionRoutes = [
-        { id: 1, path: originalRoute.path, label: "Original Route", color: "#ef4444" },
-        { id: 2, path: bestRoute.path, label: "AI Suggested Route", color: "#22c55e" }
-      ];
+      // ❗ IMPORTANT: DO NOT MERGE with stops
+      // Use clean OSRM geometry
+      // 🔥 Split original route into segments
+      const findClosestIndex = (point, route) => {
+        let minDist = Infinity;
+        let index = 0;
 
-      alternatives
-        .filter(route => route !== bestRoute)
-        .slice(0, 3)
-        .forEach((route, index) => {
-          optionRoutes.push({
-            id: 3 + index,
-            path: route.path,
-            label: "Alternative Route",
-            color: detailColors[index]
-          });
+        route.forEach((coord, i) => {
+          const d =
+            Math.pow(coord[0] - point[0], 2) +
+            Math.pow(coord[1] - point[1], 2);
+
+          if (d < minDist) {
+            minDist = d;
+            index = i;
+          }
         });
 
-      setRouteOptions(optionRoutes);
+        return index;
+      };
+
+      const routeStartIndex = findClosestIndex(start, originalRoute);
+      const routeEndIndex = findClosestIndex(end, originalRoute);
+
+      // 🛑 Ensure correct order
+      const safeStart = Math.min(routeStartIndex, routeEndIndex);
+      const safeEnd = Math.max(routeStartIndex, routeEndIndex);
+
+      const beforeSegment = originalRoute.slice(0, safeStart);
+      const afterSegment = originalRoute.slice(safeEnd);
+
+      // 🔥 Merge properly
+      const finalPath = [
+        ...beforeSegment,
+        ...bestRoute.path,
+        ...afterSegment
+      ].filter(p => Array.isArray(p) && p.length === 2);
+
+      // 🔹 Show options
+      if (
+        !bestRoute ||
+        !bestRoute.path ||
+        bestRoute.path.length === 0
+      ) {
+        console.error("Invalid best route");
+        return;
+      }
+
+      if (
+        !Array.isArray(finalPath) ||
+        finalPath.length === 0 ||
+        finalPath.some(p => !p || p.length !== 2)
+      ) {
+        console.error("Invalid final path", finalPath);
+        return;
+      }
+
+      setRouteOptions([
+        { id: 1, path: originalRoute, label: "Original Route", color: "#ef4444" },
+        { id: 2, path: finalPath, label: "Alternative Route", color: "#10b981" }
+      ]);
+
       setSelectedOption(2);
+
     } catch (err) {
       console.error("OSRM error", err);
     }
@@ -296,11 +341,12 @@ function RerouteControl() {
 
       setError(null);
       alert('Alternative route applied successfully!');
-      setBlockagePoint(null);
       setRouteOptions([]);
       setSelectedOption(null);
-      fetchStops(selectedRoute); // Refresh stops
-
+      setActiveReroute({
+        route_id: selectedRoute,
+        reroute_path: selectedRouteObj.path
+      });
       setIsApplying(false);
     } catch (err) {
       setError(err.message);
@@ -322,8 +368,6 @@ function RerouteControl() {
   const currentRoute = activeReroute
     ? activeReroute.reroute_path
     : originalRoute; const center = stops.length > 0 ? [stops[0].latitude, stops[0].longitude] : [0, 0];
-
-  const selectedRouteObj = routeOptions.find(r => r.id === selectedOption);
 
   return (
     <div className="space-y-6">
@@ -368,10 +412,57 @@ function RerouteControl() {
           </div>
         </div>
 
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+
+          {/* FROM */}
+          <div className="bg-blue-50 p-3 rounded-lg border">
+            <label className="block text-sm font-semibold text-blue-700 mb-2">
+              🚏 From Stop
+            </label>
+            <select
+              value={fromStop || ''}
+              onChange={(e) => {
+                const val = e.target.value;
+                setFromStop(val ? parseInt(val) : null);
+              }}
+              className="w-full px-3 py-2 border rounded-lg"
+            >
+              <option value="">Select Start Stop</option>
+              {stops.map(stop => (
+                <option key={stop.id} value={stop.stop_order}>
+                  {stop.stop_order}. {stop.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* TO */}
+          <div className="bg-green-50 p-3 rounded-lg border">
+            <label className="block text-sm font-semibold text-green-700 mb-2">
+              🎯 To Stop
+            </label>
+            <select
+              value={toStop || ''}
+              onChange={(e) => {
+                const val = e.target.value;
+                setToStop(val ? parseInt(val) : null);
+              }}
+              className="w-full px-3 py-2 border rounded-lg"
+            >
+              <option value="">Select End Stop</option>
+              {stops.map(stop => (
+                <option key={stop.id} value={stop.stop_order}>
+                  {stop.stop_order}. {stop.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+        </div>
+
         <div className="flex flex-col sm:flex-row gap-3">
           <button
             onClick={() => {
-              setBlockagePoint(null);
               setRouteOptions([]);
               setSelectedOption(null);
               setError(null);
@@ -386,6 +477,13 @@ function RerouteControl() {
             className="px-6 py-2 bg-red-500 hover:bg-red-600 text-white font-medium rounded-lg transition"
           >
             Reset to Original
+          </button>
+
+          <button
+            onClick={generateAlternativeRoutes}
+            className="px-6 py-2 bg-blue-500 text-white rounded-lg"
+          >
+            Generate Reroute
           </button>
 
           {routeOptions.length > 0 && (
@@ -404,8 +502,7 @@ function RerouteControl() {
 
         <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
           <p className="text-sm text-blue-800">
-            <span className="font-semibold">💡 Instructions:</span> Click on the map to simulate a blockage point.
-            An alternative route will be generated. Review the preview and apply if satisfied.
+            <span className="font-semibold">💡 Instructions:</span> Select From and To stops, then click "Generate Reroute" to create an alternative route for that segment.
           </p>
         </div>
       </div>
@@ -431,50 +528,43 @@ function RerouteControl() {
               )}
 
               {routeOptions.map(option => (
-                <Polyline
-                  key={option.id}
-                  positions={option.path}
-                  pathOptions={{
-                    color: option.color,
-                    weight: selectedOption === option.id ? 5 : 3,
-                    dashArray: option.id === 1 ? "5,5" : "0"
-                  }}
-                />
+                Array.isArray(option.path) &&
+                option.path.length > 1 && (
+                  <Polyline
+                    key={option.id}
+                    positions={option.path}
+                    pathOptions={{
+                      color: option.color,
+                      weight: selectedOption === option.id ? 5 : 3,
+                      dashArray: option.id === 1 ? "5,5" : "0"
+                    }}
+                  />
+                )
               ))}
 
               {/* Stop Markers */}
-              {stops.map(stop => (
-                <Marker
-                  key={stop.id}
-                  position={[stop.latitude, stop.longitude]}
-                  icon={L.icon({
-                    iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-                    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-                    iconSize: [25, 41],
-                    shadowSize: [41, 41],
-                    iconAnchor: [12, 41]
-                  })}
-                >
-                  <Popup>{stop.name}</Popup>
-                </Marker>
-              ))}
+              {stops.map(stop => {
+                const isFrom = stop.stop_order === fromStop;
+                const isTo = stop.stop_order === toStop;
 
-              {/* Blockage Point */}
-              {blockagePoint && (
-                <Marker
-                  position={blockagePoint}
-                  icon={L.divIcon({
-                    html: '<div style="font-size: 24px;">🚫</div>',
-                    iconSize: [30, 30],
-                    className: 'blockage-marker'
-                  })}
-                >
-                  <Popup>Blockage Point</Popup>
-                </Marker>
-              )}
-
-              {/* Map Click Handler */}
-              <MapClickHandler onMapClick={handleMapClick} />
+                return (
+                  <Marker
+                    key={stop.id}
+                    position={[stop.latitude, stop.longitude]}
+                    icon={L.divIcon({
+                      html: `<div style="
+                        background:${isFrom ? 'blue' : isTo ? 'green' : 'gray'};
+                        width:14px;
+                        height:14px;
+                        border-radius:50%;
+                      "></div>`,
+                      className: ''
+                    })}
+                  >
+                    <Popup>{stop.name}</Popup>
+                  </Marker>
+                );
+              })}
             </MapContainer>
           ) : (
             <div className="flex items-center justify-center h-full">
@@ -542,11 +632,6 @@ function RerouteControl() {
                     <p className="text-yellow-800 text-xs font-medium">Preview Routes</p>
                   </div>
                 )}
-                {blockagePoint && (
-                  <div className="p-2 bg-red-50 rounded">
-                    <p className="text-red-800 text-xs font-medium">Blockage Point: {blockagePoint[0].toFixed(4)}, {blockagePoint[1].toFixed(4)}</p>
-                  </div>
-                )}
               </div>
             ) : (
               <p className="text-gray-500 text-sm">Select a route to view details</p>
@@ -571,15 +656,10 @@ function RerouteControl() {
   );
 }
 
-// Click handler component for map
-function MapClickHandler({ onMapClick }) {
-  useMapEvents({
-    click(e) {
-      onMapClick(e);
-    }
-  });
-
-  return null;
-}
-
 export default RerouteControl;
+
+
+
+
+
+
